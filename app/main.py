@@ -531,6 +531,9 @@ def settings_page(request: Request, session, **extra):
         totp_secret=totp_pending,
         totp_qr=qr_data_uri(security.totp_uri(totp_pending)) if totp_pending else "",
         telegram_on=telegram.enabled(),
+        telegram_bot=bool(config.TELEGRAM_BOT_TOKEN),
+        telegram_fixed=bool(config.TELEGRAM_CHAT_ID),
+        telegram_link=telegram.pending_link() if config.TELEGRAM_BOT_TOKEN else None,
         base_url=config.BASE_URL,
         new_token="", message="", error="",
     )
@@ -613,6 +616,43 @@ async def telegram_test(request: Request):
     ok = await run_in_threadpool(telegram.send_message, "✅ Транскрибер на связи")
     return settings_page(request, session, **({"message": "Сообщение отправлено в Telegram."} if ok else
                                               {"error": "Не получилось отправить. Проверьте настройки бота."}))
+
+
+@app.post("/settings/telegram/link")
+async def telegram_link(request: Request):
+    session, _ = await check_post(request)
+    if not session:
+        return forbidden()
+    try:
+        await run_in_threadpool(telegram.start_link)
+    except Exception as e:  # noqa: BLE001 — показать причину, а не 500
+        return settings_page(request, session, error=f"Бот не отвечает: {e}")
+    return RedirectResponse("/settings#telegram", status_code=303)
+
+
+@app.post("/settings/telegram/check")
+async def telegram_check(request: Request):
+    session, _ = await check_post(request)
+    if not session:
+        return forbidden()
+    try:
+        ok = await run_in_threadpool(telegram.finish_link)
+    except Exception as e:  # noqa: BLE001
+        return settings_page(request, session, error=f"Бот не отвечает: {e}")
+    if not ok:
+        return settings_page(request, session, error="Сообщение с кодом не пришло. Откройте ссылку, "
+                                                     "нажмите в Telegram «Старт» и проверьте ещё раз.")
+    await run_in_threadpool(telegram.send_message, "✅ Чат привязан к транскриберу. Сюда будут приходить итоги звонков.")
+    return settings_page(request, session, message="Чат привязан — проверьте сообщение в Telegram.")
+
+
+@app.post("/settings/telegram/unlink")
+async def telegram_unlink(request: Request):
+    session, _ = await check_post(request)
+    if not session:
+        return forbidden()
+    telegram.unlink()
+    return RedirectResponse("/settings#telegram", status_code=303)
 
 
 @app.post("/settings/logout-all")

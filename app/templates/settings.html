@@ -91,16 +91,41 @@
     {% endif %}
   </section>
 
-  <section class="card stack">
+  <section class="card stack" id="telegram">
     <h2>Telegram</h2>
     {% if telegram_on %}
       <p class="small"><span class="badge badge-ok">Подключён</span> Сюда приходят готовые итоги и предупреждения о входах.</p>
-      <form method="post" action="/settings/telegram/test">
+      <div class="inline-actions">
+        <form method="post" action="/settings/telegram/test">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn" type="submit">Отправить проверку</button>
+        </form>
+        {% if not telegram_fixed %}
+        <form method="post" action="/settings/telegram/unlink" data-confirm="Отвязать чат? Итоги перестанут приходить в Telegram.">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-danger" type="submit">Отвязать</button>
+        </form>
+        {% endif %}
+      </div>
+    {% elif not telegram_bot %}
+      <p class="small muted">Бот не настроен: на сервере не задан TELEGRAM_BOT_TOKEN.</p>
+    {% elif telegram_link %}
+      <ol class="small steps">
+        <li>Откройте бота по ссылке и нажмите «Старт» (или отправьте ему код <code>{{ telegram_link[0] }}</code>).</li>
+        <li>Вернитесь сюда и нажмите «Проверить».</li>
+      </ol>
+      <a class="btn btn-primary btn-block" href="{{ telegram_link[1] }}" target="_blank" rel="noopener noreferrer">Открыть бота в Telegram</a>
+      <form method="post" action="/settings/telegram/check">
         <input type="hidden" name="csrf" value="{{ csrf }}">
-        <button class="btn" type="submit">Отправить проверку</button>
+        <button class="btn btn-block" type="submit">Проверить</button>
       </form>
+      <p class="small muted">Код действует 15 минут. Привязать чат может только тот, кто знает код.</p>
     {% else %}
-      <p class="small muted">Бот не настроен: задайте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID на сервере.</p>
+      <p class="small muted">Бот готов, осталось привязать ваш чат: сюда будут приходить итоги звонков и предупреждения о входах.</p>
+      <form method="post" action="/settings/telegram/link">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn btn-primary" type="submit">Привязать чат</button>
+      </form>
     {% endif %}
   </section>
 

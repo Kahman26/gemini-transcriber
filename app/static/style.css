@@ -350,6 +350,9 @@ body.auth { display: grid; place-items: center; padding: calc(24px + var(--top))
 .token-list small { font-size: .8125rem; }
 .qr { display: block; margin: 4px auto; border-radius: 12px; background: #fff; }
 .secret { letter-spacing: .08em; }
+.inline-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.steps { padding-left: 1.2em; margin: 0; }
+.steps li { margin: 4px 0; }
 .howto summary { cursor: pointer; font-weight: 650; color: var(--accent); }
 .howto ol { padding-left: 1.2em; margin: 10px 0; }
 .howto li { margin: 6px 0; }

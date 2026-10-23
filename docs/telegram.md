@@ -28,20 +28,21 @@
 ```
 TELEGRAM_BOT_TOKEN=токен от BotFather
 TELEGRAM_API_BASE=https://telegram-proxy.<ваш-поддомен>.workers.dev
-TELEGRAM_PROXY_SECRET=та же строка, что в PROXY_SECRET
-TELEGRAM_CHAT_ID=
+TELEGRAM_PROXY_SECRET='та же строка, что в PROXY_SECRET'
 ```
 
-Узнать `TELEGRAM_CHAT_ID` (после `/start` боту):
+Затем `systemctl restart transcriber transcriber-worker`.
+
+## 4. Привязка чата
+
+Сайт → «Настройки» → Telegram → «Привязать чат» → «Открыть бота в Telegram» → «Старт» →
+вернуться на сайт → «Проверить». Бот запомнит ваш чат по одноразовому коду: посторонний,
+написавший боту, привязаться не сможет.
+
+Можно и вручную: узнать номер чата (после `/start` боту) и вписать в `TELEGRAM_CHAT_ID`:
 
 ```
 cd /opt/transcriber && PYTHONDONTWRITEBYTECODE=1 venv/bin/python -m app.telegram chat-id
-```
-
-Вписать число в `TELEGRAM_CHAT_ID`, затем:
-
-```
-systemctl restart transcriber transcriber-worker
 ```
 
 Проверка — «Настройки» на сайте → «Отправить проверку».
