@@ -75,11 +75,11 @@ systemctl enable --now fail2ban >/dev/null 2>&1 || true
 fail2ban-client reload >/dev/null 2>&1 || systemctl restart fail2ban
 
 echo "→ Сертификат"
-SERVER_IP=$(curl -fsS4 --max-time 10 https://ifconfig.me || true)
+SERVER_IPS=" $(hostname -I) "
 DNS_IP=$(getent ahostsv4 "$DOMAIN" | awk 'NR==1 {print $1}' || true)
 if [ ! -d "/etc/letsencrypt/live/$DOMAIN" ]; then
-    if [ -z "$DNS_IP" ] || [ "$DNS_IP" != "$SERVER_IP" ]; then
-        echo "  ✗ $DOMAIN пока указывает на «${DNS_IP:-ничего}», а сервер — $SERVER_IP."
+    if [ -z "$DNS_IP" ] || [[ "$SERVER_IPS" != *" $DNS_IP "* ]]; then
+        echo "  ✗ $DOMAIN пока указывает на «${DNS_IP:-ничего}», а у сервера адреса:$SERVER_IPS"
         echo "    Сертификат и nginx пропущены. Когда DNS обновится, запустите bootstrap ещё раз."
         exit 0
     fi
