@@ -581,11 +581,11 @@ async def totp_confirm(request: Request):
     if not session:
         return forbidden()
     secret = get_setting("totp_pending")
-    if not secret or not security.totp_verify(secret, str(form.get("code", ""))[:12], remember=False):
+    # Код, которым подтвердили включение, сразу считается использованным
+    if not secret or not security.totp_verify(secret, str(form.get("code", ""))[:12]):
         return settings_page(request, session, error="Код не подошёл. Проверьте время на телефоне и попробуйте ещё раз.")
     set_setting("totp_secret", secret)
     set_setting("totp_enabled", "1")
-    set_setting("totp_last_counter", "0")
     del_setting("totp_pending")
     response = settings_page(request, session, message="Второй фактор включён. Это устройство запомнено.")
     set_cookie(response, config.COOKIE_DEVICE, security.create_device(request.headers.get("user-agent", "")),

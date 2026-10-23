@@ -196,7 +196,7 @@ def _totp_at(secret: str, counter: int) -> str:
     return f"{code:06d}"
 
 
-def totp_verify(secret: str, code: str, remember: bool = True) -> bool:
+def totp_verify(secret: str, code: str) -> bool:
     """Код текущего шага или соседних (часы телефона могут отставать). Один код — один вход."""
     code = "".join(ch for ch in code if ch.isdigit())
     if len(code) != 6 or not secret:
@@ -205,8 +205,7 @@ def totp_verify(secret: str, code: str, remember: bool = True) -> bool:
     last_used = int(get_setting("totp_last_counter", "0") or 0)
     for c in (counter - 1, counter, counter + 1):
         if c > last_used and hmac.compare_digest(_totp_at(secret, c), code):
-            if remember:
-                set_setting("totp_last_counter", str(c))
+            set_setting("totp_last_counter", str(c))
             return True
     return False
 
