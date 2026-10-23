@@ -25,13 +25,13 @@
     <ul class="file-list" id="file-list" hidden></ul>
 
     <label class="field">
-      <span>С кем разговор</span>
+      <span>С кем разговор <small class="muted">— необязательно</small></span>
       <input name="contact" maxlength="80" placeholder="Имя собеседника" autocomplete="off">
       <small class="muted">Только имя: так расшифровка точнее подпишет говорящих.</small>
     </label>
 
     <fieldset class="field">
-      <legend>Итог</legend>
+      <legend>Тип разговора <small class="muted">— «Авто» определит сам</small></legend>
       <div class="segmented">
         {% for key, label in TEMPLATES.items() %}
         <label><input type="radio" name="template" value="{{ key }}" {{ "checked" if key == "auto" }}><span>{{ label }}</span></label>
@@ -47,7 +47,7 @@
 
     <button class="btn btn-primary btn-block" type="submit" id="upload-submit">Расшифровать</button>
 
-    <p class="muted small">Из Заметок удобнее без этой страницы: откройте запись → «Поделиться» → «В транскрибер». Как добавить команду — в <a class="link" href="/settings">настройках</a>.</p>
+    <p class="muted small">Из Заметок удобнее через Telegram: запись → «Поделиться» → Telegram → бот транскрибера. Подробнее — в <a class="link" href="/settings#send">настройках</a>.</p>
   </form>
 </main>
 {% endblock %}

@@ -14,54 +14,17 @@
   {% if message %}<p class="notice notice-ok" role="status">{{ message }}</p>{% endif %}
   {% if error %}<p class="notice notice-error" role="alert">{{ error }}</p>{% endif %}
 
-  <section class="card stack" id="shortcut">
-    <h2>Быстрая команда iPhone</h2>
-    <p class="muted small">Команда «В транскрибер» отправляет запись из меню «Поделиться» в Заметках, Telegram и «Файлах». Для неё нужен токен: он даёт право только загружать записи.</p>
-
-    {% if new_token %}
-      <div class="token-box">
-        <label class="field">
-          <span>Новый токен — показывается один раз</span>
-          <input id="new-token" value="{{ new_token }}" readonly autocomplete="off" spellcheck="false">
-        </label>
-        <button class="btn btn-small" type="button" data-copy="#new-token">Скопировать</button>
-      </div>
-      <p class="small">Адрес для команды: <code>{{ base_url }}/api/upload</code></p>
-    {% endif %}
-
-    {% if tokens %}
-    <ul class="token-list">
-      {% for t in tokens %}
-      <li>
-        <span><strong>{{ t.name }}</strong><small class="muted">создан {{ fmt_dt(t.created_at) }}{% if t.last_used %} · последний раз {{ fmt_dt(t.last_used) }}{% endif %}</small></span>
-        <form method="post" action="/settings/token/{{ t.id }}/delete" data-confirm="Отозвать токен «{{ t.name }}»? Команда с ним перестанет работать.">
-          <input type="hidden" name="csrf" value="{{ csrf }}">
-          <button class="btn btn-small btn-danger" type="submit">Отозвать</button>
-        </form>
-      </li>
-      {% endfor %}
-    </ul>
-    {% endif %}
-
-    <form method="post" action="/settings/token" class="inline-form">
-      <input type="hidden" name="csrf" value="{{ csrf }}">
-      <input name="name" maxlength="60" placeholder="Название, например iPhone" aria-label="Название токена">
-      <button class="btn" type="submit">Создать токен</button>
-    </form>
-
-    <details class="howto">
-      <summary>Как собрать команду</summary>
-      <ol class="small">
-        <li>Откройте «Быстрые команды» → «+». Назовите команду «В транскрибер».</li>
-        <li>Нажмите «i» внизу → включите «Показывать на листе „Поделиться“». В «Типы» оставьте «Файлы» и «Медиа».</li>
-        <li>Добавьте действие «Запросить ввод»: текст, вопрос «С кем разговор?», ответ можно оставить пустым.</li>
-        <li>Добавьте «Получить содержимое URL»: адрес <code>{{ base_url }}/api/upload</code>, метод POST.<br>
-          Заголовки: <code>Authorization</code> = <code>Bearer ваш_токен</code>.<br>
-          Тело запроса: «Форма». Поля: <code>file</code> — тип «Файл», значение «Ввод из быстрой команды»; <code>contact</code> — текст «Введённый текст».</li>
-        <li>Добавьте «Показать уведомление» с результатом «Содержимое URL».</li>
-      </ol>
-      <p class="small muted">Подробная инструкция с картинками — в репозитории, docs/shortcut.md.</p>
-    </details>
+  <section class="card stack" id="send">
+    <h2>Как отправить запись</h2>
+    <ol class="small steps">
+      <li><strong>Через Telegram.</strong> Запись в Заметках → «Поделиться» → Telegram →
+        {% if bot_username %}<a class="link" href="https://t.me/{{ bot_username }}" target="_blank" rel="noopener noreferrer">@{{ bot_username }}</a>{% else %}ваш бот{% endif %}.
+        В подписи можно указать имя и тип: <code>Иван</code>, <code>Иван холодный</code>, <code>Иван заказчик</code> — или ничего.
+        Итог придёт ответом. До {{ TELEGRAM_MAX_MB }} МБ.</li>
+      <li><strong>На сайте.</strong> Кнопка «Загрузить» — файл из «Файлов», до {{ MAX_UPLOAD_MB }} МБ.
+        Из Заметок сначала «Поделиться» → «Сохранить в Файлы».</li>
+    </ol>
+    {% if not inbox %}<p class="small muted">Приём записей ботом выключен (TELEGRAM_INBOX на сервере).</p>{% endif %}
   </section>
 
   <section class="card stack" id="totp">

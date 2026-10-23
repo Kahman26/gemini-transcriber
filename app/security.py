@@ -1,4 +1,4 @@
-"""Вход, сессии, CSRF, защита от перебора, второй фактор (TOTP), токены Быстрой команды.
+"""Вход, сессии, CSRF, защита от перебора, второй фактор (TOTP).
 
 Перебор паролей держат четыре слоя:
 1. здесь — пауза для IP, растущая с каждой неудачей, и общий лимит на все адреса сразу;
@@ -223,33 +223,3 @@ def totp_disable():
         del_setting(key)
     with db() as con:
         con.execute("DELETE FROM devices")
-
-
-# ── токены Быстрой команды ───────────────────────────────────────────────────
-
-def create_api_token(name: str) -> str:
-    token = "tr_" + secrets.token_urlsafe(32)
-    with db() as con:
-        con.execute("INSERT INTO api_tokens(token_hash, name, created_at) VALUES(?, ?, ?)",
-                    (token_hash(token), name[:60] or "Быстрая команда", now()))
-    return token
-
-
-def check_api_token(token: str | None) -> bool:
-    if not token or not token.startswith("tr_") or len(token) > 100:
-        return False
-    with db() as con:
-        row = con.execute("SELECT id FROM api_tokens WHERE token_hash = ?", (token_hash(token),)).fetchone()
-        if row:
-            con.execute("UPDATE api_tokens SET last_used = ? WHERE id = ?", (now(), row["id"]))
-    return row is not None
-
-
-def list_api_tokens():
-    with db() as con:
-        return con.execute("SELECT id, name, created_at, last_used FROM api_tokens ORDER BY id").fetchall()
-
-
-def delete_api_token(token_id: int):
-    with db() as con:
-        con.execute("DELETE FROM api_tokens WHERE id = ?", (token_id,))

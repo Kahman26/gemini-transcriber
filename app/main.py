@@ -10,7 +10,6 @@ import re
 import secrets
 import shutil
 import threading
-import uuid
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -25,9 +24,8 @@ from starlette.middleware.trustedhost import TrustedHostMiddleware
 
 from summarize import KINDS, TEMPLATES
 
-from . import config, render, security, telegram
+from . import config, intake, render, security, telegram
 from .db import db, del_setting, get_setting, init, now, set_setting
-from .media import probe, safe_ext
 
 APP_DIR = Path(__file__).resolve().parent
 CALL_ID = re.compile(r"^[0-9a-f]{32}$")
@@ -44,6 +42,7 @@ templates.env.globals.update(
     fmt_dt=render.fmt_dt, fmt_duration=render.fmt_duration, fmt_date_full=render.fmt_date_full,
     call_title=render.call_title, STATUS_LABELS=render.STATUS_LABELS, TEMPLATES=TEMPLATES, KINDS=KINDS,
     MAX_UPLOAD_MB=config.MAX_UPLOAD_MB, MAX_FILES=config.MAX_FILES_PER_UPLOAD,
+    TELEGRAM_MAX_MB=config.TELEGRAM_MAX_FILE_MB,
 )
 
 CSP = ("default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data: blob:; "
@@ -314,72 +313,9 @@ def upload_form(request: Request):
     return page(request, "upload.html", session=session)
 
 
-class UploadError(Exception):
-    pass
-
-
-def save_upload(upload: UploadFile, contact: str, template: str, origin: str) -> str:
-    """Сохраняет файл под сгенерированным именем, проверяет, что это звук, ставит в очередь."""
-    call_id = uuid.uuid4().hex
-    d = call_dir(call_id)
-    d.mkdir(parents=True)
-    ext = safe_ext(upload.filename or "")
-    src = d / f"source.{ext}"
-    limit = config.MAX_UPLOAD_MB * 1024 * 1024
-    size = 0
-    try:
-        upload.file.seek(0)
-        with src.open("wb") as out:
-            while chunk := upload.file.read(1024 * 1024):
-                size += len(chunk)
-                if size > limit:
-                    raise UploadError(f"Файл больше {config.MAX_UPLOAD_MB} МБ")
-                out.write(chunk)
-        if size == 0:
-            raise UploadError("Пустой файл")
-        has_audio, duration = probe(src)
-        if not has_audio:
-            raise UploadError("Это не похоже на аудиозапись")
-    except Exception:
-        shutil.rmtree(d, ignore_errors=True)
-        raise
-
-    original = re.sub(r"[\x00-\x1f\x7f]", "", Path(upload.filename or "").name)[:200] or f"запись.{ext}"
-    t = now()
-    with db() as con:
-        con.execute(
-            "INSERT INTO calls(id, created_at, updated_at, contact, template, original_name, source_ext, origin, "
-            "size_bytes, duration_sec, status, redo, message) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', 'all', "
-            "'В очереди')",
-            (call_id, t, t, contact, template, original, ext, origin, size, duration))
-    return call_id
-
-
-def clean_contact(value) -> str:
-    return re.sub(r"[\x00-\x1f\x7f]", " ", str(value or "")).strip()[:80]
-
-
-def clean_template(value) -> str:
-    value = str(value or "auto")
-    return value if value in TEMPLATES else "auto"
-
-
-async def handle_upload(form, origin: str) -> tuple[list[str], list[str]]:
-    files = [f for f in form.getlist("files") + form.getlist("file") if isinstance(f, UploadFile)]
-    if not files:
-        return [], ["Файл не выбран"]
-    if len(files) > config.MAX_FILES_PER_UPLOAD:
-        return [], [f"Не больше {config.MAX_FILES_PER_UPLOAD} файлов за раз"]
-    contact, template = clean_contact(form.get("contact")), clean_template(form.get("template"))
-    ids, errors = [], []
-    for f in files:
-        try:
-            ids.append(await run_in_threadpool(save_upload, f, contact, template, origin))
-        except UploadError as e:
-            errors.append(f"{f.filename}: {e}")
-        finally:
-            await f.close()
-    return ids, errors
+def save_upload(upload: UploadFile, contact: str, template: str) -> str:
+    upload.file.seek(0)
+    return intake.store(upload.file, upload.filename or "", contact, template, origin="web")
 
 
 @app.post("/upload")
@@ -387,32 +323,24 @@ async def upload(request: Request):
     session, form = await check_post(request)
     if not session:
         return JSONResponse({"ok": False, "errors": ["Сессия истекла — обновите страницу"]}, status_code=403)
-    ids, errors = await handle_upload(form, "web")
+    files = [f for f in form.getlist("files") if isinstance(f, UploadFile)]
+    if not files:
+        return JSONResponse({"ok": False, "errors": ["Файл не выбран"]}, status_code=400)
+    if len(files) > config.MAX_FILES_PER_UPLOAD:
+        return JSONResponse({"ok": False, "errors": [f"Не больше {config.MAX_FILES_PER_UPLOAD} файлов за раз"]},
+                            status_code=400)
+    contact, template = form.get("contact"), form.get("template")
+    ids, errors = [], []
+    for f in files:
+        try:
+            ids.append(await run_in_threadpool(save_upload, f, contact, template))
+        except intake.UploadError as e:
+            errors.append(f"{f.filename}: {e}")
+        finally:
+            await f.close()
     return JSONResponse({"ok": bool(ids), "ids": ids, "errors": errors,
                          "redirect": f"/calls/{ids[0]}" if len(ids) == 1 else "/"},
                         status_code=200 if ids else 400)
-
-
-@app.post("/api/upload")
-async def api_upload(request: Request):
-    """Для Быстрой команды iPhone: Authorization: Bearer tr_…, поле file (или files), contact, template."""
-    ip = client_ip(request)
-    if security.lockout_left(ip, "api"):
-        return PlainTextResponse("Слишком много неверных попыток, подождите", status_code=429)
-    auth = request.headers.get("authorization", "")
-    token = auth[7:].strip() if auth.lower().startswith("bearer ") else ""
-    if not security.check_api_token(token):
-        security.record_attempt(ip, "api", False)
-        security.log_security("API_FAIL", ip)
-        return PlainTextResponse("Неверный токен", status_code=401)
-    form = await request.form()
-    ids, errors = await handle_upload(form, "shortcut")
-    if not ids:
-        return PlainTextResponse("Не принято: " + "; ".join(errors), status_code=400)
-    text = "Принято, расшифровка уже идёт" if len(ids) == 1 else f"Принято файлов: {len(ids)}"
-    if errors:
-        text += ". Не приняты: " + "; ".join(errors)
-    return PlainTextResponse(text)
 
 
 # ── звонок ───────────────────────────────────────────────────────────────────
@@ -472,7 +400,8 @@ async def call_edit(request: Request, call_id: str):
         return PlainTextResponse("Не найдено", status_code=404)
     with db() as con:
         con.execute("UPDATE calls SET contact = ?, template = ?, updated_at = ? WHERE id = ?",
-                    (clean_contact(form.get("contact")), clean_template(form.get("template")), now(), call_id))
+                    (intake.clean_contact(form.get("contact")), intake.clean_template(form.get("template")),
+                     now(), call_id))
     return RedirectResponse(f"/calls/{call_id}", status_code=303)
 
 
@@ -526,7 +455,6 @@ def qr_data_uri(text: str) -> str:
 def settings_page(request: Request, session, **extra):
     totp_pending = get_setting("totp_pending")
     ctx = dict(
-        tokens=security.list_api_tokens(),
         totp_on=security.totp_enabled(),
         totp_secret=totp_pending,
         totp_qr=qr_data_uri(security.totp_uri(totp_pending)) if totp_pending else "",
@@ -535,7 +463,9 @@ def settings_page(request: Request, session, **extra):
         telegram_fixed=bool(config.TELEGRAM_CHAT_ID),
         telegram_link=telegram.pending_link() if config.TELEGRAM_BOT_TOKEN else None,
         base_url=config.BASE_URL,
-        new_token="", message="", error="",
+        bot_username=get_setting("telegram_bot_username"),
+        inbox=config.TELEGRAM_INBOX,
+        message="", error="",
     )
     ctx.update(extra)
     return page(request, "settings.html", session=session, **ctx)
@@ -547,26 +477,6 @@ def settings(request: Request):
     if not session:
         return to_login()
     return settings_page(request, session)
-
-
-@app.post("/settings/token")
-async def settings_token(request: Request):
-    session, form = await check_post(request)
-    if not session:
-        return forbidden()
-    name = clean_contact(form.get("name")) or "iPhone"
-    token = security.create_api_token(name)
-    # Токен показывается один раз: в базе остаётся только хэш
-    return settings_page(request, session, new_token=token, message="Токен создан. Скопируйте его сейчас.")
-
-
-@app.post("/settings/token/{token_id}/delete")
-async def settings_token_delete(request: Request, token_id: int):
-    session, _ = await check_post(request)
-    if not session:
-        return forbidden()
-    security.delete_api_token(token_id)
-    return RedirectResponse("/settings", status_code=303)
 
 
 @app.post("/settings/totp/start")

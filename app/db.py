@@ -1,4 +1,4 @@
-"""База SQLite: звонки, сессии, попытки входа, токены Быстрой команды, настройки.
+"""База SQLite: звонки, сессии, попытки входа, настройки.
 
 Все запросы — только с параметрами (?), никакой склейки строк с данными пользователя.
 """
@@ -28,7 +28,8 @@ CREATE TABLE IF NOT EXISTS calls (
     error         TEXT NOT NULL DEFAULT '',
     models        TEXT NOT NULL DEFAULT '',
     short_summary TEXT NOT NULL DEFAULT '',
-    notified      INTEGER NOT NULL DEFAULT 0
+    notified      INTEGER NOT NULL DEFAULT 0,
+    tg_message_id INTEGER NOT NULL DEFAULT 0   -- сообщение в Telegram, на которое ответить итогом
 );
 CREATE INDEX IF NOT EXISTS calls_created ON calls(created_at DESC);
 CREATE INDEX IF NOT EXISTS calls_status ON calls(status, created_at);
@@ -56,19 +57,11 @@ CREATE TABLE IF NOT EXISTS attempts (
     id   INTEGER PRIMARY KEY,
     ts   INTEGER NOT NULL,
     ip   TEXT NOT NULL,
-    kind TEXT NOT NULL,                  -- password | totp | api
+    kind TEXT NOT NULL,                  -- password | totp
     ok   INTEGER NOT NULL
 );
 CREATE INDEX IF NOT EXISTS attempts_ip ON attempts(ip, kind, ts);
 CREATE INDEX IF NOT EXISTS attempts_ts ON attempts(kind, ts);
-
-CREATE TABLE IF NOT EXISTS api_tokens (
-    id         INTEGER PRIMARY KEY,
-    token_hash TEXT NOT NULL UNIQUE,
-    name       TEXT NOT NULL,
-    created_at INTEGER NOT NULL,
-    last_used  INTEGER NOT NULL DEFAULT 0
-);
 
 CREATE TABLE IF NOT EXISTS settings (
     key   TEXT PRIMARY KEY,
@@ -98,6 +91,11 @@ def init():
     with db() as con:
         con.execute("PRAGMA journal_mode = WAL")
         con.executescript(SCHEMA)
+        # Миграции для баз, созданных прежними версиями
+        cols = {r["name"] for r in con.execute("PRAGMA table_info(calls)")}
+        if "tg_message_id" not in cols:
+            con.execute("ALTER TABLE calls ADD COLUMN tg_message_id INTEGER NOT NULL DEFAULT 0")
+        con.execute("DROP TABLE IF EXISTS api_tokens")  # Быструю команду убрали
     DB_PATH.chmod(0o600)
 
 

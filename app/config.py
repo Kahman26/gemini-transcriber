@@ -45,6 +45,11 @@ TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
 TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "").strip()
 TELEGRAM_API_BASE = os.getenv("TELEGRAM_API_BASE", "https://api.telegram.org").rstrip("/")
 TELEGRAM_PROXY_SECRET = os.getenv("TELEGRAM_PROXY_SECRET", "").strip()
+# Принимать записи, присланные боту (app/bot.py). Включать только на сервере:
+# сообщения бота может забрать лишь одна копия программы.
+TELEGRAM_INBOX = _flag("TELEGRAM_INBOX")
+# Больше этого Telegram не отдаёт ботам файлы
+TELEGRAM_MAX_FILE_MB = 20
 
 COOKIE_SESSION = "tr_session" if DEV else "__Host-tr_session"
 COOKIE_DEVICE = "tr_device" if DEV else "__Host-tr_device"

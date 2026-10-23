@@ -8,6 +8,7 @@
 """
 import shutil
 import sys
+import threading
 import time
 import traceback
 
@@ -15,7 +16,7 @@ import make_docx
 import summarize
 import transcribe
 
-from . import config, telegram
+from . import bot, config, telegram
 from .db import db, init, now
 from .media import to_m4a
 from .render import download_name, fmt_date_full, fmt_duration
@@ -72,8 +73,6 @@ def process(call):
     src = d / f"source.{call['source_ext']}"
     audio = d / "audio.m4a"
     transcript_path = d / "transcript.txt"
-    context = context_for(call)
-
     if not audio.exists():
         update(cid, progress=2, message="Готовлю запись")
         to_m4a(src, audio)
@@ -82,19 +81,20 @@ def process(call):
         def progress(done, total, msg):
             update(cid, progress=5 + int(80 * done / max(total, 1)), message=msg)
         text, duration, models = transcribe.transcribe_files(
-            [src], d / ".chunks", context, progress=progress, log=log)
+            [src], d / ".chunks", context_for(call), progress=progress, log=log)
         transcript_path.write_text(text, encoding="utf-8")
         shutil.rmtree(d / ".chunks", ignore_errors=True)
         update(cid, duration_sec=duration or call["duration_sec"], models=", ".join(models))
     else:
         text = transcript_path.read_text(encoding="utf-8")
 
-    update(cid, progress=88, message="Пишу итог")
-    md, kind, model = summarize.summarize(text, call["template"], context, log)
-    (d / "summary.md").write_text(md, encoding="utf-8")
-
+    # Имя и тип могли поменять на сайте, пока шла расшифровка — берём свежие
     with db() as con:
         fresh = con.execute("SELECT * FROM calls WHERE id = ?", (cid,)).fetchone()
+    update(cid, progress=88, message="Пишу итог")
+    md, kind, model = summarize.summarize(text, fresh["template"], context_for(fresh), log)
+    (d / "summary.md").write_text(md, encoding="utf-8")
+
     update(cid, progress=96, message="Собираю Word")
     make_docx.build_docx(summary_header(fresh, kind, fresh["duration_sec"]) + md, d / "summary.docx",
                          transcript=text)
@@ -116,9 +116,11 @@ def notify_done(cid: str):
                f"<i>{e(summarize.KINDS.get(call['kind'], 'Разговор'))}</i>\n\n"
                f"{e(call['short_summary'][:600])}\n\n"
                f"{e(config.BASE_URL)}/calls/{cid}")
-    ok = telegram.send_document(call_dir(cid) / "summary.docx", download_name(call, "docx"), caption)
+    # Запись пришла через бота — итог ответом на то сообщение
+    reply_to = call["tg_message_id"]
+    ok = telegram.send_document(call_dir(cid) / "summary.docx", download_name(call, "docx"), caption, reply_to)
     if not ok:
-        ok = telegram.send_message(caption)
+        ok = telegram.send_message(caption, reply_to=reply_to)
     if ok:
         update(cid, notified=1)
 
@@ -130,6 +132,8 @@ def run_forever():
         con.execute("UPDATE calls SET status = 'queued', message = 'Продолжу после перезапуска' "
                     "WHERE status = 'processing'")
     log("Очередь запущена")
+    if config.TELEGRAM_INBOX and config.TELEGRAM_BOT_TOKEN:
+        threading.Thread(target=bot.run_inbox, name="telegram-inbox", daemon=True).start()
     while True:
         call = take_next()
         if not call:
@@ -146,7 +150,8 @@ def run_forever():
             update(call["id"], status="error", error=msg[:500], message="Ошибка")
             telegram.send_message(f"⚠️ Не получилось обработать звонок "
                                   f"<b>{telegram.esc(call['contact'] or call['original_name'])}</b>:\n"
-                                  f"{telegram.esc(msg[:300])}\n{telegram.esc(config.BASE_URL)}/calls/{call['id']}")
+                                  f"{telegram.esc(msg[:300])}\n{telegram.esc(config.BASE_URL)}/calls/{call['id']}",
+                                  reply_to=call["tg_message_id"])
 
 
 if __name__ == "__main__":

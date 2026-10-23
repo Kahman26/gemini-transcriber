@@ -136,7 +136,7 @@
         <input name="contact" value="{{ call.contact }}" maxlength="80" placeholder="Имя собеседника" autocomplete="off">
       </label>
       <fieldset class="field">
-        <legend>Итог</legend>
+        <legend>Тип разговора</legend>
         <div class="segmented">
           {% for key, label in TEMPLATES.items() %}
           <label><input type="radio" name="template" value="{{ key }}" {{ "checked" if key == call.template }}><span>{{ label }}</span></label>
