@@ -1,0 +1,42 @@
+# Сайт транскрибера. Ставится в /etc/systemd/system/ (см. deploy/bootstrap.sh).
+
+[Unit]
+Description=Transcriber — сайт расшифровки звонков
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=exec
+User=transcriber
+Group=transcriber
+WorkingDirectory=/opt/transcriber
+
+# Ключи и хэш пароля — здесь, в репозиторий они не попадают (файл 600, root)
+EnvironmentFile=/etc/transcriber.env
+Environment=TRANSCRIBER_DATA_DIR=/var/lib/transcriber
+Environment=PYTHONUNBUFFERED=1
+Environment=PYTHONDONTWRITEBYTECODE=1
+
+# Слушает только локальный адрес. Настоящий IP посетителя берётся из
+# X-Forwarded-For, но только от nginx (127.0.0.1) — подделать его снаружи нельзя.
+ExecStart=/opt/transcriber/venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8780 \
+    --proxy-headers --forwarded-allow-ips 127.0.0.1 --no-server-header
+Restart=always
+RestartSec=3
+
+# Изоляция: доступна на запись только папка с данными
+UMask=0077
+NoNewPrivileges=true
+PrivateTmp=true
+PrivateDevices=true
+ProtectSystem=strict
+ProtectHome=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictSUIDSGID=true
+LockPersonality=true
+ReadWritePaths=/var/lib/transcriber
+
+[Install]
+WantedBy=multi-user.target

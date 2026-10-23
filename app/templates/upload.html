@@ -1,0 +1,53 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Загрузка — Транскрибер{% endblock %}
+{% block scripts %}<script src="/static/upload.js?v=1" defer></script>{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="icon-btn" href="/" aria-label="Назад">{{ icon("back") }}</a>
+    <h1 class="topbar-title">Новая запись</h1>
+    <span class="icon-btn-spacer"></span>
+  </div>
+</header>
+
+<main class="page">
+  <form id="upload-form" class="stack" action="/upload" method="post" enctype="multipart/form-data">
+    <input type="hidden" name="csrf" value="{{ csrf }}">
+
+    <label class="dropzone" id="dropzone">
+      <input id="files" type="file" name="files" multiple required
+             accept="audio/*,video/*,.m4a,.mp3,.wav,.ogg,.oga,.opus,.aac,.amr,.caf,.flac,.webm,.mp4,.mov,.3gp">
+      <span class="dropzone-icon">{{ icon("upload") }}</span>
+      <span class="dropzone-title">Выбрать записи</span>
+      <span class="dropzone-hint">До {{ MAX_FILES }} файлов, каждый до {{ MAX_UPLOAD_MB }} МБ</span>
+    </label>
+    <ul class="file-list" id="file-list" hidden></ul>
+
+    <label class="field">
+      <span>С кем разговор</span>
+      <input name="contact" maxlength="80" placeholder="Имя собеседника" autocomplete="off">
+      <small class="muted">Только имя: так расшифровка точнее подпишет говорящих.</small>
+    </label>
+
+    <fieldset class="field">
+      <legend>Итог</legend>
+      <div class="segmented">
+        {% for key, label in TEMPLATES.items() %}
+        <label><input type="radio" name="template" value="{{ key }}" {{ "checked" if key == "auto" }}><span>{{ label }}</span></label>
+        {% endfor %}
+      </div>
+    </fieldset>
+
+    <div class="upload-progress" id="upload-progress" hidden>
+      <progress max="100" value="0"></progress>
+      <span class="muted" id="upload-progress-text">Загрузка…</span>
+    </div>
+    <p class="notice notice-error" id="upload-error" role="alert" hidden></p>
+
+    <button class="btn btn-primary btn-block" type="submit" id="upload-submit">Расшифровать</button>
+
+    <p class="muted small">Из Заметок удобнее без этой страницы: откройте запись → «Поделиться» → «В транскрибер». Как добавить команду — в <a class="link" href="/settings">настройках</a>.</p>
+  </form>
+</main>
+{% endblock %}

@@ -1,0 +1,119 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Настройки — Транскрибер{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="icon-btn" href="/" aria-label="Назад">{{ icon("back") }}</a>
+    <h1 class="topbar-title">Настройки</h1>
+    <span class="icon-btn-spacer"></span>
+  </div>
+</header>
+
+<main class="page stack-lg">
+  {% if message %}<p class="notice notice-ok" role="status">{{ message }}</p>{% endif %}
+  {% if error %}<p class="notice notice-error" role="alert">{{ error }}</p>{% endif %}
+
+  <section class="card stack" id="shortcut">
+    <h2>Быстрая команда iPhone</h2>
+    <p class="muted small">Команда «В транскрибер» отправляет запись из меню «Поделиться» в Заметках, Telegram и «Файлах». Для неё нужен токен: он даёт право только загружать записи.</p>
+
+    {% if new_token %}
+      <div class="token-box">
+        <label class="field">
+          <span>Новый токен — показывается один раз</span>
+          <input id="new-token" value="{{ new_token }}" readonly autocomplete="off" spellcheck="false">
+        </label>
+        <button class="btn btn-small" type="button" data-copy="#new-token">Скопировать</button>
+      </div>
+      <p class="small">Адрес для команды: <code>{{ base_url }}/api/upload</code></p>
+    {% endif %}
+
+    {% if tokens %}
+    <ul class="token-list">
+      {% for t in tokens %}
+      <li>
+        <span><strong>{{ t.name }}</strong><small class="muted">создан {{ fmt_dt(t.created_at) }}{% if t.last_used %} · последний раз {{ fmt_dt(t.last_used) }}{% endif %}</small></span>
+        <form method="post" action="/settings/token/{{ t.id }}/delete" data-confirm="Отозвать токен «{{ t.name }}»? Команда с ним перестанет работать.">
+          <input type="hidden" name="csrf" value="{{ csrf }}">
+          <button class="btn btn-small btn-danger" type="submit">Отозвать</button>
+        </form>
+      </li>
+      {% endfor %}
+    </ul>
+    {% endif %}
+
+    <form method="post" action="/settings/token" class="inline-form">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <input name="name" maxlength="60" placeholder="Название, например iPhone" aria-label="Название токена">
+      <button class="btn" type="submit">Создать токен</button>
+    </form>
+
+    <details class="howto">
+      <summary>Как собрать команду</summary>
+      <ol class="small">
+        <li>Откройте «Быстрые команды» → «+». Назовите команду «В транскрибер».</li>
+        <li>Нажмите «i» внизу → включите «Показывать на листе „Поделиться“». В «Типы» оставьте «Файлы» и «Медиа».</li>
+        <li>Добавьте действие «Запросить ввод»: текст, вопрос «С кем разговор?», ответ можно оставить пустым.</li>
+        <li>Добавьте «Получить содержимое URL»: адрес <code>{{ base_url }}/api/upload</code>, метод POST.<br>
+          Заголовки: <code>Authorization</code> = <code>Bearer ваш_токен</code>.<br>
+          Тело запроса: «Форма». Поля: <code>file</code> — тип «Файл», значение «Ввод из быстрой команды»; <code>contact</code> — текст «Введённый текст».</li>
+        <li>Добавьте «Показать уведомление» с результатом «Содержимое URL».</li>
+      </ol>
+      <p class="small muted">Подробная инструкция с картинками — в репозитории, docs/shortcut.md.</p>
+    </details>
+  </section>
+
+  <section class="card stack" id="totp">
+    <h2>Второй фактор</h2>
+    {% if totp_on %}
+      <p class="small"><span class="badge badge-ok">Включён</span> На новом устройстве после пароля спросим код из приложения-аутентификатора.</p>
+      <form method="post" action="/settings/totp/disable" class="inline-form" data-confirm="Выключить второй фактор?">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="Код" aria-label="Код из приложения" required>
+        <button class="btn btn-danger" type="submit">Выключить</button>
+      </form>
+    {% elif totp_secret %}
+      <p class="small">Отсканируйте код в приложении-аутентификаторе (Пароли iPhone, Google Authenticator, Яндекс Ключ) и введите 6 цифр.</p>
+      <img class="qr" src="{{ totp_qr }}" alt="QR-код для приложения-аутентификатора" width="220" height="220">
+      <p class="small muted">Или вручную: <code class="secret">{{ totp_secret }}</code></p>
+      <form method="post" action="/settings/totp/confirm" class="inline-form">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input name="code" inputmode="numeric" autocomplete="one-time-code" maxlength="7" placeholder="Код" aria-label="Код из приложения" required>
+        <button class="btn btn-primary" type="submit">Включить</button>
+      </form>
+    {% else %}
+      <p class="small muted">Даже если пароль утечёт, без телефона войти не получится. Запомненные устройства код не спрашивают.</p>
+      <form method="post" action="/settings/totp/start">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn" type="submit">Настроить</button>
+      </form>
+    {% endif %}
+  </section>
+
+  <section class="card stack">
+    <h2>Telegram</h2>
+    {% if telegram_on %}
+      <p class="small"><span class="badge badge-ok">Подключён</span> Сюда приходят готовые итоги и предупреждения о входах.</p>
+      <form method="post" action="/settings/telegram/test">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn" type="submit">Отправить проверку</button>
+      </form>
+    {% else %}
+      <p class="small muted">Бот не настроен: задайте TELEGRAM_BOT_TOKEN и TELEGRAM_CHAT_ID на сервере.</p>
+    {% endif %}
+  </section>
+
+  <section class="card stack">
+    <h2>Сеансы</h2>
+    <form method="post" action="/logout">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn btn-block" type="submit">{{ icon("logout") }} Выйти</button>
+    </form>
+    <form method="post" action="/settings/logout-all" data-confirm="Выйти на всех устройствах, включая это?">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <button class="btn btn-danger btn-block" type="submit">Выйти на всех устройствах</button>
+    </form>
+  </section>
+</main>
+{% endblock %}

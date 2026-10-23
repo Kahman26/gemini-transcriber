@@ -1,0 +1,170 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}{{ call_title(call) }} — Транскрибер{% endblock %}
+{% block scripts %}<script src="/static/call.js?v=1" defer></script>{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="topbar-inner">
+    <a class="icon-btn" href="/" aria-label="Назад">{{ icon("back") }}</a>
+    <h1 class="topbar-title">{{ call_title(call) }}</h1>
+    <button class="icon-btn" type="button" data-open-sheet="actions-sheet" aria-label="Действия">{{ icon("more") }}</button>
+  </div>
+</header>
+
+<main class="page call-page" data-call-id="{{ call.id }}" data-status="{{ call.status }}">
+  <p class="call-info muted">
+    {{ fmt_date_full(call.created_at) }} · {{ fmt_duration(call.duration_sec) }} ·
+    {{ KINDS.get(call.kind) or TEMPLATES.get(call.template, "Авто") }}
+  </p>
+
+  {% if call.status in ("queued", "processing") %}
+    <section class="card status-card" data-status-id="{{ call.id }}" data-status="{{ call.status }}">
+      <div class="spinner" aria-hidden="true"></div>
+      <div class="status-body">
+        <strong class="status-label">{{ call.message or STATUS_LABELS.get(call.status) }}</strong>
+        <progress max="100" value="{{ call.progress }}"></progress>
+        <small class="muted">Страница обновится сама. Можно закрыть — итог придёт в Telegram.</small>
+      </div>
+    </section>
+  {% elif call.status == "error" %}
+    <section class="card error-card">
+      <div class="error-title">{{ icon("alert") }} <strong>Не получилось обработать</strong></div>
+      <p class="small">{{ call.error }}</p>
+      <form method="post" action="/calls/{{ call.id }}/redo">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="{{ 'summary' if has_txt else 'all' }}">
+        <button class="btn btn-primary" type="submit">{{ icon("redo") }} Повторить</button>
+      </form>
+    </section>
+  {% endif %}
+
+  {% if has_audio %}
+  <section class="player card">
+    <audio id="audio" src="/calls/{{ call.id }}/file/audio" preload="metadata" controls></audio>
+    <div class="speed" role="group" aria-label="Скорость">
+      <button type="button" data-speed="1" class="active">1×</button>
+      <button type="button" data-speed="1.25">1.25×</button>
+      <button type="button" data-speed="1.5">1.5×</button>
+      <button type="button" data-speed="2">2×</button>
+    </div>
+  </section>
+  {% endif %}
+
+  {% if call.status == "done" or has_txt %}
+  <div class="actions-row">
+    <button class="btn" type="button" data-open-sheet="share-sheet">{{ icon("share") }} Поделиться</button>
+    {% if has_docx %}<a class="btn" href="/calls/{{ call.id }}/file/docx?download=1">{{ icon("download") }} Word</a>{% endif %}
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button type="button" role="tab" class="tab active" data-tab="summary" aria-selected="true">Итог</button>
+    <button type="button" role="tab" class="tab" data-tab="transcript" aria-selected="false">Расшифровка</button>
+  </div>
+
+  <section class="tab-panel prose" data-panel="summary">
+    {% if summary_html %}{{ summary_html|safe }}{% else %}<p class="muted">Итог ещё не готов.</p>{% endif %}
+  </section>
+
+  <section class="tab-panel" data-panel="transcript" hidden>
+    {% if has_audio %}
+    <label class="check follow"><input type="checkbox" id="follow" checked><span>Следовать за записью</span></label>
+    {% endif %}
+    <div class="transcript" id="transcript">
+      {% for l in lines %}
+        {% if l.t is not none %}
+        <p class="line spk-{{ l.color }}" data-t="{{ l.t }}">
+          <button type="button" class="ts" data-t="{{ l.t }}">{{ l.stamp }}</button>
+          <span class="speaker">{{ l.speaker }}</span>
+          <span class="text">{{ l.text }}</span>
+        </p>
+        {% else %}
+        <p class="line line-plain">{{ l.text }}</p>
+        {% endif %}
+      {% endfor %}
+    </div>
+  </section>
+  {% endif %}
+</main>
+
+{# Меню «Поделиться»: файл скачивается заранее, иначе Safari не откроет системное меню #}
+<div class="sheet" id="share-sheet" hidden>
+  <div class="sheet-backdrop" data-close-sheet></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="share-title">
+    <div class="sheet-head">
+      <h2 id="share-title">Поделиться</h2>
+      <button class="icon-btn" type="button" data-close-sheet aria-label="Закрыть">{{ icon("close") }}</button>
+    </div>
+    <ul class="sheet-list">
+      {% if has_docx %}
+      <li class="share-item" data-share="docx" data-url="/calls/{{ call.id }}/file/docx?download=1">
+        <span class="share-icon">{{ icon("doc") }}</span>
+        <span class="share-name">Итог<small>Word, с полной расшифровкой</small></span>
+        <button type="button" class="btn btn-small" data-share-btn disabled>…</button>
+      </li>
+      {% endif %}
+      {% if has_txt %}
+      <li class="share-item" data-share="txt" data-url="/calls/{{ call.id }}/file/txt?download=1">
+        <span class="share-icon">{{ icon("text") }}</span>
+        <span class="share-name">Расшифровка<small>Текст .txt</small></span>
+        <button type="button" class="btn btn-small" data-share-btn disabled>…</button>
+      </li>
+      {% endif %}
+      {% if has_audio %}
+      <li class="share-item" data-share="audio" data-url="/calls/{{ call.id }}/file/audio?download=1">
+        <span class="share-icon">{{ icon("wave") }}</span>
+        <span class="share-name">Запись<small>Аудио .m4a</small></span>
+        <button type="button" class="btn btn-small" data-share-btn disabled>…</button>
+      </li>
+      {% endif %}
+    </ul>
+    <p class="muted small sheet-note" data-share-note hidden>Этот браузер не умеет делиться файлами — они скачаются.</p>
+  </div>
+</div>
+
+<div class="sheet" id="actions-sheet" hidden>
+  <div class="sheet-backdrop" data-close-sheet></div>
+  <div class="sheet-panel" role="dialog" aria-modal="true" aria-labelledby="actions-title">
+    <div class="sheet-head">
+      <h2 id="actions-title">Звонок</h2>
+      <button class="icon-btn" type="button" data-close-sheet aria-label="Закрыть">{{ icon("close") }}</button>
+    </div>
+
+    <form method="post" action="/calls/{{ call.id }}/edit" class="stack">
+      <input type="hidden" name="csrf" value="{{ csrf }}">
+      <label class="field">
+        <span>С кем разговор</span>
+        <input name="contact" value="{{ call.contact }}" maxlength="80" placeholder="Имя собеседника" autocomplete="off">
+      </label>
+      <fieldset class="field">
+        <legend>Итог</legend>
+        <div class="segmented">
+          {% for key, label in TEMPLATES.items() %}
+          <label><input type="radio" name="template" value="{{ key }}" {{ "checked" if key == call.template }}><span>{{ label }}</span></label>
+          {% endfor %}
+        </div>
+      </fieldset>
+      <button class="btn btn-block" type="submit">{{ icon("edit") }} Сохранить</button>
+    </form>
+
+    {% if call.status not in ("queued", "processing") %}
+    <div class="sheet-actions">
+      <form method="post" action="/calls/{{ call.id }}/redo">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="summary">
+        <button class="btn btn-block" type="submit">{{ icon("redo") }} Пересобрать итог</button>
+      </form>
+      <form method="post" action="/calls/{{ call.id }}/redo" data-confirm="Расшифровать запись заново? Текущая расшифровка будет заменена.">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <input type="hidden" name="mode" value="all">
+        <button class="btn btn-block" type="submit">{{ icon("redo") }} Расшифровать заново</button>
+      </form>
+      <form method="post" action="/calls/{{ call.id }}/delete" data-confirm="Удалить звонок вместе с записью, расшифровкой и итогом? Отменить нельзя.">
+        <input type="hidden" name="csrf" value="{{ csrf }}">
+        <button class="btn btn-danger btn-block" type="submit">{{ icon("trash") }} Удалить</button>
+      </form>
+    </div>
+    {% endif %}
+    <p class="muted small">Файл: {{ call.original_name }}{% if call.models %} · {{ call.models }}{% endif %}</p>
+  </div>
+</div>
+{% endblock %}

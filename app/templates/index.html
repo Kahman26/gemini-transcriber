@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+{% from "_icons.html" import icon %}
+{% block title %}Звонки — Транскрибер{% endblock %}
+{% block body %}
+<header class="topbar">
+  <div class="topbar-inner">
+    <h1 class="topbar-title">Звонки</h1>
+    <a class="icon-btn" href="/settings" aria-label="Настройки">{{ icon("settings") }}</a>
+  </div>
+</header>
+
+<main class="page page-list">
+  {% if not calls %}
+    <section class="empty">
+      <div class="empty-icon">{{ icon("phone") }}</div>
+      <h2>Пока пусто</h2>
+      <p class="muted">Откройте запись звонка в Заметках, нажмите «Поделиться» → «В транскрибер». Или загрузите файл кнопкой ниже.</p>
+    </section>
+  {% else %}
+    <label class="search">
+      <input type="search" placeholder="Поиск по собеседнику и итогу" data-filter aria-label="Поиск" enterkeyhint="search">
+    </label>
+    <ul class="call-list" data-poll-list>
+      {% for c in calls %}
+      <li data-item data-search="{{ (c.contact ~ ' ' ~ c.short_summary ~ ' ' ~ c.original_name)|lower }}">
+        <a class="call-card" href="/calls/{{ c.id }}">
+          <span class="avatar avatar-{{ (c.contact or c.id)|length % 5 }}" aria-hidden="true">{{ (c.contact or "?")[:1]|upper }}</span>
+          <span class="call-main">
+            <span class="call-top">
+              <span class="call-name">{{ call_title(c) }}</span>
+              <span class="call-time">{{ fmt_dt(c.created_at) }}</span>
+            </span>
+            <span class="call-meta">{{ fmt_duration(c.duration_sec) }} · {{ KINDS.get(c.kind) or TEMPLATES.get(c.template, "Авто") }}</span>
+            {% if c.status == "done" %}
+              {% if c.short_summary %}<span class="call-summary">{{ c.short_summary }}</span>{% endif %}
+            {% else %}
+              <span class="status status-{{ c.status }}" data-status-id="{{ c.id }}" data-status="{{ c.status }}">
+                <span class="status-label">{{ c.message if c.status == "processing" else STATUS_LABELS.get(c.status) }}</span>
+                {% if c.status in ("queued", "processing") %}<progress max="100" value="{{ c.progress }}"></progress>{% endif %}
+              </span>
+            {% endif %}
+          </span>
+        </a>
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="muted center" data-filter-empty hidden>Ничего не нашлось</p>
+  {% endif %}
+</main>
+
+<a class="fab" href="/upload">{{ icon("plus") }}<span>Загрузить</span></a>
+{% endblock %}

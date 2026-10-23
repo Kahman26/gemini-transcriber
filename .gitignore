@@ -1,0 +1,40 @@
+# Ключи и настройки — только локально и в /etc/transcriber.env на сервере
+.env
+.env.*
+!.env.example
+
+# Записи, расшифровки, итоги и база — личные данные, в репозиторий не попадают
+results/
+data/
+*.db
+*.db-*
+*.sqlite*
+*.m4a
+*.mp3
+*.wav
+*.ogg
+*.oga
+*.opus
+*.aac
+*.flac
+*.amr
+*.caf
+*.mp4
+*.mov
+*.webm
+*.docx
+*.txt
+!requirements.txt
+
+# Python
+__pycache__/
+*.pyc
+venv/
+.venv/
+
+# Редакторы и система
+.idea/
+.vscode/
+.claude/
+Thumbs.db
+.DS_Store
